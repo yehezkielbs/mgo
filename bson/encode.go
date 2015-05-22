@@ -1,18 +1,18 @@
 // BSON library for Go
-// 
+//
 // Copyright (c) 2010-2012 - Gustavo Niemeyer <gustavo@niemeyer.net>
-// 
+//
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met: 
-// 
+// modification, are permitted provided that the following conditions are met:
+//
 // 1. Redistributions of source code must retain the above copyright notice, this
-//    list of conditions and the following disclaimer. 
+//    list of conditions and the following disclaimer.
 // 2. Redistributions in binary form must reproduce the above copyright notice,
 //    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution. 
-// 
+//    and/or other materials provided with the distribution.
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -84,11 +84,16 @@ type encoder struct {
 func (e *encoder) addDoc(v reflect.Value) {
 	for {
 		if vi, ok := v.Interface().(Getter); ok {
-			getv, err := vi.GetBSON()
-			if err != nil {
-				panic(err)
+			vgetter := reflect.ValueOf(vi)
+			if vgetter.Kind() == reflect.Ptr && vgetter.IsNil() {
+				v = v.Elem()
+			} else {
+				getv, err := vi.GetBSON()
+				if err != nil {
+					panic(err)
+				}
+				v = reflect.ValueOf(getv)
 			}
-			v = reflect.ValueOf(getv)
 			continue
 		}
 		if v.Kind() == reflect.Ptr {
@@ -212,7 +217,7 @@ func (e *encoder) addSlice(v reflect.Value) {
 		return
 	}
 	l := v.Len()
-	et  := v.Type().Elem()
+	et := v.Type().Elem()
 	if et == typeDocElem {
 		for i := 0; i < l; i++ {
 			elem := v.Index(i).Interface().(DocElem)
@@ -248,12 +253,22 @@ func (e *encoder) addElem(name string, v reflect.Value, minSize bool) {
 		return
 	}
 
+	if v.Kind() == reflect.Ptr && v.IsNil() {
+		e.addElem(name, v.Elem(), minSize)
+		return
+	}
+
 	if getter, ok := v.Interface().(Getter); ok {
-		getv, err := getter.GetBSON()
-		if err != nil {
-			panic(err)
+		vgetter := reflect.ValueOf(getter)
+		if vgetter.Kind() == reflect.Ptr && vgetter.IsNil() {
+			e.addElem(name, reflect.ValueOf(v.Elem()), minSize)
+		} else {
+			getv, err := getter.GetBSON()
+			if err != nil {
+				panic(err)
+			}
+			e.addElem(name, reflect.ValueOf(getv), minSize)
 		}
-		e.addElem(name, reflect.ValueOf(getv), minSize)
 		return
 	}
 
@@ -415,7 +430,7 @@ func (e *encoder) addElem(name string, v reflect.Value, minSize bool) {
 		case time.Time:
 			// MongoDB handles timestamps as milliseconds.
 			e.addElemName('\x09', name)
-			e.addInt64(s.Unix() * 1000 + int64(s.Nanosecond() / 1e6))
+			e.addInt64(s.Unix()*1000 + int64(s.Nanosecond()/1e6))
 
 		case url.URL:
 			e.addElemName('\x02', name)
